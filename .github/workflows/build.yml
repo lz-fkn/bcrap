@@ -1,29 +1,15 @@
-name: Build UEFI App
-
-on: [push, workflow_dispatch]
-
+name: Build Cube
+on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install GNU-EFI
-        run: sudo apt-get update && sudo apt-get install -y gnu-efi
-
-      - name: Compile
-        run: |
-          x86_64-linux-gnu-gcc \
-            -DNO_STDLIB=1 \
-            -I/usr/include/efi -I/usr/include/efi/x86_64 \
-            -nostdinc -nostdlib -fno-builtin \
-            -fpic -ffreestanding -fshort-wchar \
-            -mno-red-zone \
-            -e efi_main \
-            -Wl,--subsystem,10 \
-            -o cube.efi cube.c \
-            -L/usr/lib -lgnuefi -lefi
-
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc
+          gcc -nostdlib -ffreestanding -fshort-wchar -mno-red-zone \
+              -e efi_main -Wl,--subsystem=10 -o cube.efi cube.c
       - uses: actions/upload-artifact@v4
         with:
           name: cube.efi
