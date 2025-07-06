@@ -1,4 +1,4 @@
-name: Build UEFI Cube
+name: Build UEFI App
 
 on: [push, workflow_dispatch]
 
@@ -6,34 +6,32 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install GNU-EFI
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y gnu-efi git build-essential
+      - name: Install GNU-EFI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnu-efi
 
-    - name: Compile UEFI app
-      run: |
-        # Set up GNU-EFI paths
-        export GNU_EFI_INCLUDE="/usr/include/efi"
-        export GNU_EFI_LIB="/usr/lib"
+      - name: Compile
+        run: |
+          # Set paths
+          INCLUDE="/usr/include/efi"
+          LIB="/usr/lib"
 
-        # Compile
-        x86_64-w64-mingw32-gcc \
-          -I"$GNU_EFI_INCLUDE" -I"$GNU_EFI_INCLUDE/x86_64" \
-          -nostdinc -nostdlib -fno-builtin \
-          -fpic -ffreestanding -fshort-wchar \
-          -mno-red-zone \
-          -Wall -Wextra \
-          -e efi_main \
-          -Wl,--subsystem,10 \
-          -o cube.efi cube.c \
-          -L"$GNU_EFI_LIB" -lgnuefi -lefi
+          # Build command
+          x86_64-linux-gnu-gcc \
+            -I"$INCLUDE" -I"$INCLUDE/x86_64" \
+            -nostdinc -nostdlib -fno-builtin \
+            -fpic -ffreestanding -fshort-wchar \
+            -mno-red-zone \
+            -Wall -Wextra \
+            -e efi_main \
+            -Wl,--subsystem,10 \
+            -o cube.efi cube.c \
+            -L"$LIB" -lgnuefi -lefi
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: cube.efi
-        path: cube.efi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cube.efi
+          path: cube.efi
