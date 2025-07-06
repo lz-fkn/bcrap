@@ -1,96 +1,92 @@
+// === cube.c - UEFI Rotating Cube (No Dependencies) ===
 typedef unsigned long long UINT64;
 typedef unsigned int UINT32;
 typedef unsigned short UINT16;
 typedef unsigned char UINT8;
 
-typedef struct {
-    UINT8 Blue;
-    UINT8 Green;
-    UINT8 Red;
-    UINT8 Reserved;
-} EFI_GRAPHICS_OUTPUT_BLT_PIXEL;
+typedef struct { float x, y, z; } Vec3;
+typedef struct { UINT8 b, g, r, a; } Pixel;
 
-#include <efi.h>
-#include <efilib.h>
-#define WIDTH 800
-#define HEIGHT 600
-static float sin_approx(float x) {
+// Cube vertices and edges
+Vec3 cube[] = {
+    {-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
+    {-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1}
+};
+
+int edges[][2] = {
+    {0,1}, {1,2}, {2,3}, {3,0}, // Bottom face
+    {4,5}, {5,6}, {6,7}, {7,4}, // Top face
+    {0,4}, {1,5}, {2,6}, {3,7}  // Connecting edges
+};
+
+// Fast sine/cosine approximations
+float sin_approx(float x) {
     while (x > 3.14159f) x -= 6.28318f;
     while (x < -3.14159f) x += 6.28318f;
     float x2 = x * x;
-    return x * (1 - x2 / 6 + x2 * x2 / 120);
+    return x * (1 - x2/6 + x2*x2/120);
 }
-static float cos_approx(float x) {
-    return sin_approx(x + 1.5708f);
-}
-typedef struct {
-    float x, y, z;
-} Vec3;
-EFI_GRAPHICS_OUTPUT_BLT_PIXEL colors[] = {
-    {255, 0, 0, 0}, {255, 127, 0, 0}, {255, 255, 0, 0},
-    {0, 255, 0, 0}, {0, 0, 255, 0}, {75, 0, 130, 0}
-};
-Vec3 cube[] = {
-    {-1, -1, -1}, { 1, -1, -1}, { 1,  1, -1}, {-1,  1, -1},
-    {-1, -1,  1}, { 1, -1,  1}, { 1,  1,  1}, {-1,  1,  1},
-};
-int edges[][2] = {
-    {0,1}, {1,2}, {2,3}, {3,0},
-    {4,5}, {5,6}, {6,7}, {7,4},
-    {0,4}, {1,5}, {2,6}, {3,7}
-};
-Vec3 rotate(Vec3 p, float angleX, float angleY) {
+
+float cos_approx(float x) { return sin_approx(x + 1.5708f); }
+
+// Rotate point around X/Y axes
+Vec3 rotate(Vec3 p, float ax, float ay) {
     Vec3 r = p;
-    float y = cos_approx(angleX) * r.y - sin_approx(angleX) * r.z;
-    float z = sin_approx(angleX) * r.y + cos_approx(angleX) * r.z;
+    // X rotation
+    float y = cos_approx(ax)*r.y - sin_approx(ax)*r.z;
+    float z = sin_approx(ax)*r.y + cos_approx(ax)*r.z;
     r.y = y; r.z = z;
-    float x = cos_approx(angleY) * r.x + sin_approx(angleY) * r.z;
-    z = -sin_approx(angleY) * r.x + cos_approx(angleY) * r.z;
+    // Y rotation
+    float x = cos_approx(ay)*r.x + sin_approx(ay)*r.z;
+    z = -sin_approx(ay)*r.x + cos_approx(ay)*r.z;
     r.x = x; r.z = z;
     return r;
 }
-void draw_pixel(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, EFI_GRAPHICS_OUTPUT_BLT_PIXEL color) {
-    if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
-    gop->Blt(gop, &color, EfiBltVideoFill, 0, 0, x, y, 1, 1, 0);
-}
-void draw_line(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x0, int y0, int x1, int y1, EFI_GRAPHICS_OUTPUT_BLT_PIXEL color) {
-    int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
-    int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
-    int sx = (x0 < x1) ? 1 : -1;
-    int sy = (y0 < y1) ? 1 : -1;
-    int err = dx - dy;
+
+// Main UEFI entry point
+void __attribute__((ms_abi)) efi_main(void *h, void *st) {
+    // Set up 800x600 framebuffer
+    Pixel *fb = (Pixel*)0xA0000;
+    int width = 800, height = 600;
+    
+    float angle = 0.0f;
     while (1) {
-        draw_pixel(gop, x0, y0, color);
-        if (x0 == x1 && y0 == y1) break;
-        int e2 = 2 * err;
-        if (e2 > -dy) { err -= dy; x0 += sx; }
-        if (e2 < dx)  { err += dx; y0 += sy; }
-    }
-}
-EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
-    InitializeLib(ImageHandle, SystemTable);
-    EFI_GRAPHICS_OUTPUT_PROTOCOL *gop;
-    uefi_call_wrapper(BS->LocateProtocol, 3, &gEfiGraphicsOutputProtocolGuid, NULL, (void**)&gop);
-    UINT32 cx = gop->Mode->Info->HorizontalResolution;
-    UINT32 cy = gop->Mode->Info->VerticalResolution;
-    float angleX = 0.0f, angleY = 0.0f;
-    while (1) {
-        EFI_GRAPHICS_OUTPUT_BLT_PIXEL black = {0, 0, 0, 0};
-        gop->Blt(gop, &black, EfiBltVideoFill, 0, 0, 0, 0, cx, cy, 0);
-        Vec3 projected[8];
-        for (int i = 0; i < 8; ++i) {
-            Vec3 r = rotate(cube[i], angleX, angleY);
-            float scale = 200 / (r.z + 4);
-            projected[i].x = r.x * scale + cx / 2;
-            projected[i].y = r.y * scale + cy / 2;
+        // Clear screen (black)
+        for (int i = 0; i < width * height; i++)
+            fb[i] = (Pixel){0, 0, 0, 0};
+        
+        // Draw rotating cube
+        for (int i = 0; i < 12; i++) {
+            Vec3 p1 = rotate(cube[edges[i][0]], angle, angle*0.7f);
+            Vec3 p2 = rotate(cube[edges[i][1]], angle, angle*0.7f);
+            
+            // Simple perspective projection
+            int x1 = (int)(p1.x * 100 / (p1.z + 4) + width/2);
+            int y1 = (int)(p1.y * 100 / (p1.z + 4) + height/2);
+            int x2 = (int)(p2.x * 100 / (p2.z + 4) + width/2);
+            int y2 = (int)(p2.y * 100 / (p2.z + 4) + height/2);
+            
+            // Draw line (Bresenham's algorithm)
+            int dx = abs(x2 - x1), sx = x1 < x2 ? 1 : -1;
+            int dy = -abs(y2 - y1), sy = y1 < y2 ? 1 : -1;
+            int err = dx + dy, e2;
+            
+            while (1) {
+                if (x1 >= 0 && x1 < width && y1 >= 0 && y1 < height) {
+                    // Rainbow colors based on edge index
+                    fb[y1 * width + x1] = (Pixel){
+                        (i*50)%255,  // Blue
+                        (i*70)%255,  // Green
+                        (i*90)%255,  // Red
+                        0            // Alpha
+                    };
+                }
+                if (x1 == x2 && y1 == y2) break;
+                e2 = 2*err;
+                if (e2 >= dy) { err += dy; x1 += sx; }
+                if (e2 <= dx) { err += dx; y1 += sy; }
+            }
         }
-        for (int i = 0; i < 12; ++i) {
-            Vec3 p1 = projected[edges[i][0]];
-            Vec3 p2 = projected[edges[i][1]];
-            draw_line(gop, (int)p1.x, (int)p1.y, (int)p2.x, (int)p2.y, colors[i % 6]);
-        }
-        angleX += 0.03f;
-        angleY += 0.02f;
+        angle += 0.05f;
     }
-    return EFI_SUCCESS;
 }
