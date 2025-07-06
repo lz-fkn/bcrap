@@ -1,3 +1,15 @@
+typedef unsigned long long UINT64;
+typedef unsigned int UINT32;
+typedef unsigned short UINT16;
+typedef unsigned char UINT8;
+
+typedef struct {
+    UINT8 Blue;
+    UINT8 Green;
+    UINT8 Red;
+    UINT8 Reserved;
+} EFI_GRAPHICS_OUTPUT_BLT_PIXEL;
+
 #include <efi.h>
 #include <efilib.h>
 #define WIDTH 800
